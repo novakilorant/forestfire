@@ -1,1 +1,5 @@
 .vscode/*
+*.txt
+*.ilk
+*.obj
+*.pdb

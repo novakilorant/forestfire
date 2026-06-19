@@ -14,14 +14,20 @@ int seed = time(0);
 
 struct SandDune {
     int rows, cols, n_rule;
-    vector<vector<int>> grid, firegrid;
+    vector<vector<int>> grid;
+    vector<vector<int>> firegrid;  
     int slipage_count = 0;
     ofstream display_file;
+    ofstream fire_file;
     ofstream slipage_file;
 
     SandDune(int r, int c, int n, string file_name)
-        : rows(r), cols(c), n_rule(n), display_file(file_name + ".txt"), slipage_file(file_name + "_slipage.txt"),
-        grid(r, vector<int>(c, 0)) {srand(seed);}
+        : rows(r), cols(c), n_rule(n),
+          display_file(file_name + ".txt"),
+          fire_file(file_name + "_fire.txt"),
+          slipage_file(file_name + "_slipage.txt"),
+          grid(r, vector<int>(c, 0)),
+          firegrid(r, vector<int>(c, 0)) {srand(seed);}
 
     void Initialize() {
         for (int i = 0; i < rows; ++i)
@@ -29,37 +35,72 @@ struct SandDune {
                 grid[i][j] = 0;
     }
 
+    void check_for_invalid_cell() {
+        for (int i = 0; i < rows; ++i)
+                for (int j = 0; j < cols; ++j) {
+                    if (grid[i][j] > n_rule) {
+                        slipage_file << "Fatal error: cell (" << i << ", " << j << ") has more than " << n_rule << " grains of sand." << endl;
+                        exit(1);
+                    }
+                }
+            }
+
+
     void step(int time) {
         int randomRow = rand() % rows;
         int randomCol = rand() % cols;
         grid[randomRow][randomCol] += 1;
-        if (grid[randomRow][randomCol] == n_rule) induceSlipage(randomRow, randomCol);
-        for (int i = 0; i < rows; ++i)
-            for (int j = 0; j < cols; ++j) {
-                if (grid[i][j] > n_rule) {
-                    slipage_file << "Fatal error: cell (" << i << ", " << j << ") has more than " << n_rule << " grains of sand." << endl;
-                    exit(1);
-                }
-            }
+
+        display();
+
+        resolveAvalanche();
+
+        check_for_invalid_cell();
+        
         slipage_file << time << "\t" << slipage_count << '\n';
         slipage_count = 0;
     }
 
-    void induceSlipage(int i, int j) {
-        //display();
-        grid[i][j] = 0;
-        slipage_count++;
-        int dx[4] = {1, -1, 0, 0};
-        int dy[4] = {0, 0, 1, -1};
-        for (int k = 0; k < 4; ++k) {
-            int ni = i + dx[k];
-            int nj = j + dy[k];
-            if (ni >= 0 && ni < rows && nj >= 0 && nj < cols) {
-                grid[ni][nj] += 1;
-                if (grid[ni][nj] == n_rule) induceSlipage(ni, nj);
-            }
-        }
+    void resolveAvalanche() {
+        static const int dx[4] = {1, -1, 0, 0};
+        static const int dy[4] = {0, 0, 1, -1};
 
+        vector<pair<int,int>> unstable;
+        for (int i = 0; i < rows; ++i)
+            for (int j = 0; j < cols; ++j)
+                if (grid[i][j] >= n_rule)
+                    unstable.push_back({i, j});
+
+        while (!unstable.empty()) {
+            vector<vector<int>> delta(rows, vector<int>(cols, 0));
+            for (auto& row : firegrid) fill(row.begin(), row.end(), 0);
+
+            for (auto& cell : unstable) {
+                int i = cell.first, j = cell.second;
+                delta[i][j] -= grid[i][j];   
+                firegrid[i][j] = 1;          
+                slipage_count++;
+                for (int k = 0; k < 4; ++k) {
+                    int ni = i + dx[k];
+                    int nj = j + dy[k];
+                    if (ni >= 0 && ni < rows && nj >= 0 && nj < cols)
+                        delta[ni][nj] += 1;
+                }
+            }
+
+            for (int i = 0; i < rows; ++i)
+                for (int j = 0; j < cols; ++j)
+                    grid[i][j] += delta[i][j];
+
+            display();
+            //displayFire();
+
+            unstable.clear();
+            for (int i = 0; i < rows; ++i)
+                for (int j = 0; j < cols; ++j)
+                    if (grid[i][j] >= n_rule)
+                        unstable.push_back({i, j});
+        }
     }
 
     void display() {        
@@ -72,10 +113,21 @@ struct SandDune {
         }
     }
 
+    void displayFire() {
+        for (int i = 0; i < rows; ++i) {
+            for (int j = 0; j < cols; ++j) {
+                if (j == cols - 1) fire_file << firegrid[i][j];
+                else fire_file << firegrid[i][j] << "\t";
+            }
+            fire_file << '\n';
+        }
+    }
+
     void run(int time) {
         for (int t = 0; t < time; ++t) {
             step(t);
             display();
+            displayFire();  
         }
     }
 };
